@@ -239,6 +239,7 @@ func (rc *raftNode) replayWAL() *wal.WAL {
 	rc.raftStorage.SetHardState(st)
 
 	// append to storage so raft starts at the right place in log
+	//第一次创建需要写入一条空的日志？？！！
 	rc.raftStorage.Append(ents)
 	// send nil once lastIndex is published so client knows commit channel is current
 	if len(ents) > 0 {
@@ -426,15 +427,20 @@ func (rc *raftNode) serveChannels() {
 			rc.node.Tick()
 
 		// store raft entries to wal, then publish over commit channel
+		//收到用户请求后,将其编码,写到raft proposeC管道中,之后raft会通过node.Ready()管道读出。
 		case rd := <-rc.node.Ready():
+			//写磁盘日志，追加写，因为例子中的raftStorage 是内存的，所以需要持久化。
 			rc.wal.Save(rd.HardState, rd.Entries)
 			if !raft.IsEmptySnap(rd.Snapshot) {
 				rc.saveSnap(rd.Snapshot)
 				rc.raftStorage.ApplySnapshot(rd.Snapshot)
 				rc.publishSnapshot(rd.Snapshot)
 			}
+			//raftStorage是内存的,日志写到内存中,方便操作？，rc.wal.Save()已经保存到硬盘中
 			rc.raftStorage.Append(rd.Entries)
+			//send messages 到 从中,
 			rc.transport.Send(rd.Messages)
+			//将commit 合并提交到kv storage 中
 			if ok := rc.publishEntries(rc.entriesToApply(rd.CommittedEntries)); !ok {
 				rc.stop()
 				return
