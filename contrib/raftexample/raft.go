@@ -292,7 +292,7 @@ func (rc *raftNode) startRaft() {
 		}
 		rc.node = raft.StartNode(c, startPeers)
 	}
-
+	//启动raft网络请求传输组件
 	rc.transport = &rafthttp.Transport{
 		Logger:      zap.NewExample(),
 		ID:          types.ID(rc.id),
@@ -309,7 +309,7 @@ func (rc *raftNode) startRaft() {
 			rc.transport.AddPeer(types.ID(i+1), []string{rc.peers[i]})
 		}
 	}
-
+	//启动网络监听
 	go rc.serveRaft()
 	go rc.serveChannels()
 }
@@ -437,6 +437,7 @@ func (rc *raftNode) serveChannels() {
 				rc.publishSnapshot(rd.Snapshot)
 			}
 			//raftStorage是内存的,日志写到内存中,方便操作？，rc.wal.Save()已经保存到硬盘中
+			//磁盘是追加写，不方法删除，内存的方便操作。死掉，重启后，根据日志能恢复到删除的那种状态
 			rc.raftStorage.Append(rd.Entries)
 			//send messages 到 从中,
 			rc.transport.Send(rd.Messages)
@@ -479,6 +480,7 @@ func (rc *raftNode) serveRaft() {
 	close(rc.httpdonec)
 }
 
+//此为传输层收到消息后的回调函数
 func (rc *raftNode) Process(ctx context.Context, m raftpb.Message) error {
 	return rc.node.Step(ctx, m)
 }

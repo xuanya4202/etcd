@@ -28,14 +28,18 @@ func main() {
 	join := flag.Bool("join", false, "join an existing cluster")
 	flag.Parse()
 
+	/*让用户代码可以向raft提交写请求*/
+	//收到用户请求后,将其编码,写到raft proposeC管道中,之后raft会通过node.Ready()管道读出。
 	proposeC := make(chan string)
 	defer close(proposeC)
+	/*让用户代码向raft提交配置变更请求*/
 	confChangeC := make(chan raftpb.ConfChange)
 	defer close(confChangeC)
 
 	// raft provides a commit stream for the proposals from the http api
 	var kvs *kvstore
 	getSnapshot := func() ([]byte, error) { return kvs.getSnapshot() }
+	/*创建新的raft节点*/
 	commitC, errorC, snapshotterReady := newRaftNode(*id, strings.Split(*cluster, ","), *join, getSnapshot, proposeC, confChangeC)
 
 	kvs = newKVStore(<-snapshotterReady, proposeC, commitC, errorC)

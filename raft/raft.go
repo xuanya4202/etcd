@@ -545,6 +545,7 @@ func (r *raft) forEachProgress(f func(id uint64, pr *Progress)) {
 
 // bcastAppend sends RPC, with entries to all peers that are not up-to-date
 // according to the progress recorded in r.prs.
+/*leader向follower进行日志同步的函数*/
 func (r *raft) bcastAppend() {
 	r.forEachProgress(func(id uint64, _ *Progress) {
 		if id == r.id {
@@ -621,11 +622,13 @@ func (r *raft) reset(term uint64) {
 
 func (r *raft) appendEntry(es ...pb.Entry) {
 	li := r.raftLog.lastIndex()
+	//添加put数据的 term index
 	for i := range es {
 		es[i].Term = r.Term
 		es[i].Index = li + 1 + uint64(i)
 	}
 	// use latest "last" index after truncate/append
+	//将数据放到unstable里面,可以理解为把多条请求放到unstable数组里面
 	li = r.raftLog.append(es...)
 	r.getProgress(r.id).maybeUpdate(li)
 	// Regardless of maybeCommit's return, our caller will call bcastAppend.
@@ -918,6 +921,7 @@ func (r *raft) Step(m pb.Message) error {
 		}
 
 	default:
+		//msg 类型是MsgProp ,leader 调用stepLeader()
 		err := r.step(r, m)
 		if err != nil {
 			return err
@@ -967,6 +971,7 @@ func stepLeader(r *raft, m pb.Message) error {
 			}
 		}
 		r.appendEntry(m.Entries...)
+		/*leader 向follower进行日志同步的函数*/
 		r.bcastAppend()
 		return nil
 	case pb.MsgReadIndex:

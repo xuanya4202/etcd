@@ -306,7 +306,10 @@ func (n *node) run(r *raft) {
 		if advancec != nil {
 			readyc = nil
 		} else {
+
+			//new 一个Ready结构，用于向readyc管道发送，应用层监听此管道
 			rd = newReady(r, prevSoftSt, prevHardSt)
+			//根据位置，判断是否有新的数据需要处理
 			if rd.containsUpdates() {
 				readyc = n.readyc
 			} else {
@@ -333,9 +336,11 @@ func (n *node) run(r *raft) {
 		// TODO: maybe buffer the config propose if there exists one (the way
 		// described in raft dissertation)
 		// Currently it is dropped in Step silently.
+		//客户端的数据封装成pb.message,发送到这个管道
 		case pm := <-propc:
 			m := pm.m
 			m.From = r.id
+			//会根据不同的角色调用不同的step
 			err := r.Step(m)
 			if pm.result != nil {
 				pm.result <- err
@@ -380,7 +385,7 @@ func (n *node) run(r *raft) {
 			}
 		case <-n.tickc:
 			r.tick()
-		case readyc <- rd:
+		case readyc <- rd: /*将rd数据发送到用户层监听的readyc管道中*/
 			if rd.SoftState != nil {
 				prevSoftSt = rd.SoftState
 			}
@@ -436,6 +441,7 @@ func (n *node) Tick() {
 func (n *node) Campaign(ctx context.Context) error { return n.step(ctx, pb.Message{Type: pb.MsgHup}) }
 
 func (n *node) Propose(ctx context.Context, data []byte) error {
+	/*收到用户set 请求,将其构建messages*/
 	return n.stepWait(ctx, pb.Message{Type: pb.MsgProp, Entries: []pb.Entry{{Data: data}}})
 }
 
@@ -467,7 +473,7 @@ func (n *node) stepWait(ctx context.Context, m pb.Message) error {
 // Step advances the state machine using msgs. The ctx.Err() will be returned,
 // if any.
 func (n *node) stepWithWaitOption(ctx context.Context, m pb.Message, wait bool) error {
-	if m.Type != pb.MsgProp {
+	if m.Type != pb.MsgProp { //msg 类型不是客户端put的类型, MsgProp 客户端请求类型
 		select {
 		case n.recvc <- m:
 			return nil
@@ -477,6 +483,7 @@ func (n *node) stepWithWaitOption(ctx context.Context, m pb.Message, wait bool) 
 			return ErrStopped
 		}
 	}
+	//将客户端put的数据，发送到这个管道中ch.
 	ch := n.propc
 	pm := msgWithResult{m: m}
 	if wait {
@@ -493,7 +500,7 @@ func (n *node) stepWithWaitOption(ctx context.Context, m pb.Message, wait bool) 
 		return ErrStopped
 	}
 	select {
-	case rsp := <-pm.result:
+	case rsp := <-pm.result: //等待put 数据的结果，此处只能知道leader是否接受了。
 		if rsp != nil {
 			return rsp
 		}

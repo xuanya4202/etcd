@@ -121,6 +121,7 @@ type streamWriter struct {
 	closer  io.Closer
 	working bool
 
+	//发送到peers的数据发送到这个管道？
 	msgc  chan raftpb.Message
 	connc chan *outgoingConn
 	stopc chan struct{}
